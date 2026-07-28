@@ -8,7 +8,8 @@
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/inject.mjs\"",
             "timeout": 10,
             "statusMessage": "Loading taste"
-          }
+          },
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/capture.mjs\"", "timeout": 10 }
         ]
       }
     ],

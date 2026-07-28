@@ -5,6 +5,7 @@ import { INJECT_FLOOR, confidence } from './confidence.mjs';
 import { packageFile, projectRoot, remoteClone, tasteDir } from './paths.mjs';
 import { getConfig, resolveLearning, setConfig, setLearning } from './settings.mjs';
 import * as signals from './signals.mjs';
+import * as watch from './watch.mjs';
 import { merge, packages, parse, read, serialize, slug, upsert, write } from './store.mjs';
 
 const root = projectRoot();
@@ -33,6 +34,14 @@ function parseArgs(argv) {
 }
 const VALUE_FLAGS = new Set(['note', 'source', 'weight', 'max', 'min', 'tail']);
 
+/**
+ * How much one observation counts, by where it came from. Someone telling you a
+ * rule outright is stronger evidence than you inferring one from a single edit;
+ * someone silently rewriting your code sits in between — it is unambiguous, but
+ * you have to guess what it meant.
+ */
+const SOURCE_WEIGHT = { stated: 3, revision: 2, denied: 2 };
+
 const scopeOf = (flags) => (flags.global ? 'global' : 'project');
 const label = (pkg) => (pkg === '.' ? '(root)' : pkg);
 const pct = (n) => n.toFixed(2);
@@ -56,6 +65,8 @@ function cmdStatus() {
   out(`  decided by   ${state.key}${state.file ? ` (${state.file.replace(root, '.')})` : ' (nothing set)'}`);
   out(`  project      ${pkgs.length} package${pkgs.length === 1 ? '' : 's'}, ${n} learning${n === 1 ? '' : 's'}  ${tasteDir('project', root).replace(root, '.')}`);
   out(`  global       ${globals.length} package${globals.length === 1 ? '' : 's'}`);
+  const watched = watch.tracked(root);
+  out(`  watching     ${watched} file${watched === 1 ? '' : 's'} Claude wrote, for revisions you make`);
   out(`  signals      ${signals.unprocessed(root).length} unprocessed of ${signals.readAll(root).length}`);
   const remote = getConfig(root).remote;
   out(`  remote       ${remote ?? 'not set  (taste remote <git-url>)'}`);
@@ -109,13 +120,10 @@ function cmdAdd(positional, flags) {
   const data = read(scope, pkg, root);
   const kind = flags.contradict ? 'contradict' : 'confirm';
   const source = flags.source ?? 'manual';
-  // Something the user said outright is worth more than something inferred from
-  // one edit: it clears the injection floor on its own, an observation does not.
-  const defaultWeight = source === 'stated' ? 3 : 1;
   const { entry, isNew } = upsert(data, rule, kind, {
     note: flags.note,
     source,
-    weight: flags.weight ? Number(flags.weight) : defaultWeight,
+    weight: flags.weight ? Number(flags.weight) : (SOURCE_WEIGHT[source] ?? 1),
   });
   const file = write(scope, pkg, data, root);
   out(`${isNew ? 'added' : 'updated'} ${label(pkg)} → ${pct(confidence(entry))}  ${entry.rule}`);
@@ -317,7 +325,8 @@ function cmdRemote(positional, flags) {
 function cmdSignals(flags) {
   if (flags.clear) {
     signals.clear(root);
-    return out('signal log cleared');
+    watch.clear(root);
+    return out('signal log and file snapshots cleared');
   }
   const all = signals.readAll(root);
   if (flags.consume) {
@@ -326,7 +335,14 @@ function cmdSignals(flags) {
     return out(`marked ${all.length - from} signals as distilled (cursor ${from} → ${all.length})`);
   }
   const n = flags.tail ? Number(flags.tail) : 20;
-  for (const s of all.slice(-n)) {
+  const recent = all.slice(-n);
+  // --json gives distillation the full record, including revision diffs; the
+  // default view is a one-line-per-signal skim for humans.
+  if (flags.json) {
+    for (const s of recent) out(JSON.stringify(s));
+    return;
+  }
+  for (const s of recent) {
     out(`${s.at}  ${String(s.kind).padEnd(14)} ${(s.summary ?? '').slice(0, 100)}`);
   }
   out(`\n${all.length} signals, ${signals.unprocessed(root).length} unprocessed (cursor at ${signals.cursor(root)})`);
@@ -369,11 +385,14 @@ function cmdContext(flags) {
 function cmdInit() {
   mkdirSync(tasteDir('project', root), { recursive: true });
   const gitignore = join(root, '.gitignore');
-  const entry = '.claude/taste-signals.*';
   const existing = existsSync(gitignore) ? readFileSync(gitignore, 'utf8') : '';
-  if (!existing.includes(entry)) {
-    writeFileSync(gitignore, `${existing}${existing && !existing.endsWith('\n') ? '\n' : ''}${entry}\n`);
-    out(`added ${entry} to .gitignore (the raw signal log stays local)`);
+  // Both hold raw local evidence — prompts and copies of your files. Only
+  // distilled rules are ever meant to leave the machine.
+  const missing = ['.claude/taste-signals.*', '.claude/taste-watch/'].filter((e) => !existing.includes(e));
+  if (missing.length) {
+    const sep = existing && !existing.endsWith('\n') ? '\n' : '';
+    writeFileSync(gitignore, `${existing}${sep}${missing.join('\n')}\n`);
+    out(`added ${missing.join(' and ')} to .gitignore (raw evidence stays local)`);
   }
   out(`taste store ready at ${tasteDir('project', root).replace(root, '.')}`);
   out('next: keep working. Run /taste-learn when you want signals distilled into rules.');
@@ -387,8 +406,8 @@ const HELP = `taste — learned coding preferences for Claude Code
 
   taste list [-g]                  packages and learning counts
   taste show [<package>] [-g]      learnings with confidence
-  taste add <pkg> "<rule>"         record a confirmation  [--contradict --note "..." --source stated|edit|denied]
-                                   --source stated counts triple; three plain confirmations reach the floor
+  taste add <pkg> "<rule>"         record a confirmation  [--contradict --note "..." --source <kind>]
+                                   weights: stated ×3, revision ×2, denied ×2, anything else ×1
   taste lint [<pkg>|--all] [--fix] validate format and confidence values
   taste open <package> [-g]        open in $EDITOR
 
@@ -396,7 +415,8 @@ const HELP = `taste — learned coding preferences for Claude Code
   taste pull <pkg>|--all [-g]      pull the other way   [--overwrite to skip merging]
   taste remote [<git-url>]         get or set the git remote used for sharing
 
-  taste signals [--tail N]         the raw evidence log  [--consume to advance the cursor, --clear to wipe]
+  taste signals [--tail N]         the raw evidence log  [--json for full records incl. diffs]
+                                   [--consume to advance the cursor, --clear to wipe it and the snapshots]
   taste context [--min 0.65]       render the block injected at session start
 
 Stores: .claude/taste/ (project) · ~/.claude/taste/ (global) · a git repo you own (remote)`;

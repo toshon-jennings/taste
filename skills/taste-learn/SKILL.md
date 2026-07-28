@@ -12,11 +12,49 @@ because a preference file you did not agree to is worse than no preference file.
 ## 1. Read the evidence
 
 ```bash
-taste signals --tail 200
+taste signals --tail 200          # skim
+taste signals --tail 200 --json   # full records, including revision diffs
 ```
 
 Everything before the cursor has already been distilled. Focus on what is after it
 (`taste status` reports the count).
+
+Signal kinds, weakest to strongest:
+
+| kind | what it is | how much to trust it |
+| --- | --- | --- |
+| `edit` | a file Claude wrote | weak — shows structure, not preference |
+| `turn-end` | a turn boundary | context only |
+| `denied` | a tool call the user refused | strong, but you must infer the reason |
+| `revision` | **the user rewrote what Claude wrote** | strongest available |
+| `prompt` | the user's own words | strongest when it states a standing rule |
+
+## 1a. Revisions deserve most of your attention
+
+A `revision` is Claude getting something wrong and the user silently fixing it.
+Use `--json` to see `removed` and `added` — the actual lines. Read them as a pair
+and ask what the change *means*:
+
+```json
+{ "kind": "revision", "file": "parser.ts", "line": 2,
+  "removed": ["  // Parse the input string into tokens", "  if (input) {", "    return input.split(\" \");", "  }"],
+  "added":   ["  if (!input) return [];", "  return input.split(\" \");"] }
+```
+
+Two separate preferences are visible there: comments that restate the code get
+deleted, and guard clauses are preferred to wrapping the body in a conditional.
+Record them as two rules, not one, with `--source revision`.
+
+Be careful what you attribute to taste:
+
+- **Formatters are not preferences.** If the diff is only whitespace, quote style,
+  trailing commas, or import order, a tool did it on save. Skip it — unless the
+  same reformatting keeps appearing, in which case the rule is about the tool
+  ("this project formats on save with X"), not about style.
+- **One revision is one data point.** Record it; do not inflate it. Confidence
+  is designed to make a single correction sit below the injection floor.
+- **Do not guess intent from a deletion alone.** If the user removed code and you
+  cannot say why, that is not a preference, it is a change.
 
 ## 2. Find the patterns worth keeping
 
@@ -25,6 +63,7 @@ only if it would change how you write code next week.
 
 Keep:
 - Stated instructions that generalize — "always use X", "never Y", "we do Z here"
+- Hand revisions that carry an inferable reason (see above)
 - Corrections repeated across different tasks — the same fix asked for twice
 - Structural regularities in edits — where tests go, how files are named, which
   layer imports which
@@ -48,9 +87,8 @@ taste add testing "Put tests next to the source file, not in a top-level tests/ 
   --source edit --note "Observed across 6 files in src/ during the parser work"
 ```
 
-- `--source stated` for the user's own words, `edit` for observed structure,
-  `denied` for a refusal. Sources show up in `taste show`. `stated` counts triple,
-  because someone telling you a rule is stronger evidence than you inferring one.
+- Sources carry weight: `stated` ×3, `revision` ×2, `denied` ×2, `edit` ×1.
+  They show up in `taste show`, so the provenance of a rule stays visible.
 - Re-run the same `taste add` when you see a pattern hold again — repeated
   confirmations are exactly what raises confidence.
 - `--contradict` when the log shows a recorded rule being overruled.

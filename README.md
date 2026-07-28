@@ -43,6 +43,21 @@ capture        raw evidence, local           you review          rules + confide
 submit, edits that land, tool calls you deny, turn boundaries. Local only, never
 pushed, silent when learning is off.
 
+It also watches for the loudest signal there is — **you rewriting what Claude
+wrote**. Each file Claude touches gets snapshotted; at your next prompt the
+snapshot is compared against disk, and any hand edit is recorded with its diff:
+
+```json
+{ "kind": "revision", "file": "parser.ts", "line": 2,
+  "removed": ["  // Parse the input string into tokens", "  if (input) {"],
+  "added":   ["  if (!input) return [];"] }
+```
+
+That single record contains two preferences — no comments restating the code,
+guard clauses over nesting. Detection is lazy (a hash comparison at prompt time),
+so there is no watcher, no daemon, and no background process. Claude's own later
+edits re-snapshot the file, so they never masquerade as your corrections.
+
 **Distill** (`/taste-learn`) is Claude reading that log and proposing rules. This
 is the deliberate part. A preferences file you never agreed to is worse than no
 preferences file, so distillation is a step you take, not something that happens
@@ -81,6 +96,10 @@ D̃(t) = Σⱼ λ^((t − tⱼ)/H)   over contradictions
 
 α₀ = 1, β₀ = 2, λ = ½, H = 90 days
 ```
+
+Observations are weighted by where they came from: something you **said** counts
+×3, a **revision** or a **denial** ×2, an inferred edit ×1. Someone telling you a
+rule is stronger evidence than you guessing one from a diff.
 
 The prior starts an unseen rule at 0.33, so one sighting is not evidence.
 Confirmations and contradictions are stored as the decayed running totals rather
@@ -156,7 +175,7 @@ taste init
 | `taste push <pkg>\|--all [-g]` | share to global (`-g`) or the git remote |
 | `taste pull <pkg>\|--all [-g]` | pull the other way (`--overwrite` to skip merging) |
 | `taste remote [<git-url>]` | get or set the sharing remote |
-| `taste signals [--tail N\|--consume\|--clear]` | inspect the raw evidence log |
+| `taste signals [--tail N\|--json\|--consume\|--clear]` | inspect the raw evidence log |
 | `taste context [--min 0.65]` | render exactly what gets injected |
 
 ## Settings
@@ -175,11 +194,17 @@ These are separate files rather than keys inside Claude Code's own
 
 ## Privacy
 
-The signal log contains your prompts. It is written to
-`.claude/taste-signals.jsonl`, `taste init` adds it to `.gitignore`, and it is
-never pushed — only distilled rules are shared. `taste signals --clear` wipes it.
-`taste disable` stops capture entirely: preferences stated during a session stay
-in that session.
+Two things are written locally and never shared:
+
+- `.claude/taste-signals.jsonl` — the signal log, which contains your prompts
+- `.claude/taste-watch/` — snapshots of files Claude wrote, used to diff your
+  hand edits. Capped at 50 files and 256 KB each. Files that look sensitive
+  (`.env`, `*.pem`, `*.key`, `id_rsa`, `credentials`, `secrets.*`) are never
+  snapshotted, and there is a test asserting that.
+
+`taste init` adds both to `.gitignore`. Only distilled rules are ever pushed.
+`taste signals --clear` wipes the log and the snapshots. `taste disable` stops
+capture entirely: preferences stated during a session stay in that session.
 
 Nothing in this repo makes a network call except `taste push` / `taste pull`,
 which run `git` against a remote you configured.
@@ -190,9 +215,11 @@ which run `git` against a remote you configured.
 node test/run.mjs
 ```
 
-17 tests, no dependencies, covering the scoring rule (monotonicity, decay,
-the equivalence of running totals and event replay, the floor boundaries) and the
-store (round-trip, dedupe, merge idempotence).
+25 tests, no dependencies, covering the scoring rule (monotonicity, decay, the
+equivalence of running totals and event replay, the floor boundaries), the store
+(round-trip, dedupe, merge idempotence), and revision detection (exact diffs,
+report-once, no false positive from Claude's own edits, secrets never
+snapshotted, bounded tracking with no orphaned files).
 
 ## License
 

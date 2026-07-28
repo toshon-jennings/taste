@@ -5,11 +5,13 @@
  *
  * What counts as a signal:
  *   UserPromptSubmit   what you asked for, in your words — the strongest source
- *                      of stated preference ("stop using barrel files")
+ *                      of stated preference ("stop using barrel files"). Also
+ *                      when we check whether you rewrote anything Claude wrote.
  *   PostToolUse        an edit that survived: which file, which extension, and
- *                      a short shape of the change
+ *                      a short shape of the change. Also snapshots the result.
  *   PermissionDenied   a tool call you refused — a negative signal
  *   Stop               turn boundary, and the nudge to distill once evidence piles up
+ *   SessionStart       catches revisions made between sessions
  *
  * Nothing is sent anywhere. Nothing is inferred here. This file only records;
  * turning records into rules is a separate, reviewable step (/taste-learn).
@@ -18,6 +20,7 @@ import { readFileSync } from 'node:fs';
 import { basename, extname } from 'node:path';
 import { resolveLearning } from '../src/settings.mjs';
 import { append, unprocessed } from '../src/signals.mjs';
+import { detect, track } from '../src/watch.mjs';
 
 const NUDGE_AT = 25;
 
@@ -30,6 +33,12 @@ const read = () => {
 };
 
 const emit = (obj) => process.stdout.write(`${JSON.stringify(obj)}\n`);
+
+const recordRevisions = (event, root) => {
+  for (const revision of detect(root)) {
+    append({ session: event.session_id, ...revision }, root);
+  }
+};
 
 const shape = (input = {}) => {
   const file = input.file_path ?? input.notebook_path;
@@ -50,7 +59,13 @@ function run() {
   if (!resolveLearning(root).enabled) return;
 
   switch (event.hook_event_name) {
+    case 'SessionStart':
+      recordRevisions(event, root);
+      return;
     case 'UserPromptSubmit': {
+      // Check before recording the prompt: whatever you changed by hand, you
+      // changed before sitting down to type this.
+      recordRevisions(event, root);
       const prompt = (event.prompt ?? '').trim();
       if (prompt.length < 8) return;
       append({ kind: 'prompt', session: event.session_id, summary: prompt.slice(0, 2000) }, root);
@@ -60,6 +75,9 @@ function run() {
       const s = shape(event.tool_input);
       if (!s) return;
       append({ kind: 'edit', session: event.session_id, tool: event.tool_name, ...s, summary: `${s.file} ${s.lines}` }, root);
+      // Snapshot what Claude just wrote, so a later hand-edit is visible as one.
+      const file = event.tool_input?.file_path ?? event.tool_input?.notebook_path;
+      if (file) track(file, root);
       return;
     }
     case 'PermissionDenied': {

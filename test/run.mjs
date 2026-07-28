@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { HALF_LIFE_DAYS, INJECT_FLOOR, confidence, decay, observe } from '../src/confidence.mjs';
+import { changedRegion } from '../src/diff.mjs';
 import { projectRoot } from '../src/paths.mjs';
+import { detect, isTrackable, orphans, track, tracked } from '../src/watch.mjs';
 import { merge, parse, serialize, slug, upsert } from '../src/store.mjs';
 
 let passed = 0;
@@ -180,6 +182,114 @@ test('CLAUDE_PROJECT_DIR wins when Claude Code sets it', () => {
   } finally {
     delete process.env.CLAUDE_PROJECT_DIR;
   }
+});
+
+// ---------------------------------------------------------------- diff/watch
+
+test('changedRegion isolates a single localized edit', () => {
+  const before = ['a', 'b', 'OLD', 'd', 'e'];
+  const after = ['a', 'b', 'NEW', 'd', 'e'];
+  const r = changedRegion(before, after);
+  assert.equal(r.line, 3);
+  assert.deepEqual(r.removed, ['OLD']);
+  assert.deepEqual(r.added, ['NEW']);
+});
+
+test('changedRegion handles pure insertion and pure deletion', () => {
+  const ins = changedRegion(['a', 'c'], ['a', 'b', 'c']);
+  assert.deepEqual(ins.removed, []);
+  assert.deepEqual(ins.added, ['b']);
+  const del = changedRegion(['a', 'b', 'c'], ['a', 'c']);
+  assert.deepEqual(del.removed, ['b']);
+  assert.deepEqual(del.added, []);
+});
+
+test('identical content yields an empty region', () => {
+  const r = changedRegion(['a', 'b'], ['a', 'b']);
+  assert.deepEqual(r.removed, []);
+  assert.deepEqual(r.added, []);
+});
+
+const sandbox = (fn) => {
+  const dir = mkdtempSync(join(tmpdir(), 'taste-w-'));
+  mkdirSync(join(dir, '.claude'), { recursive: true });
+  try {
+    fn(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+};
+
+test('a hand edit after Claude writes is detected once, with the diff', () => {
+  sandbox((dir) => {
+    const file = join(dir, 'parser.ts');
+    writeFileSync(file, 'const a = 1;\nconst b = 2;\n');
+    track(file, dir);
+
+    assert.deepEqual(detect(dir), [], 'nothing changed yet');
+
+    writeFileSync(file, 'const a = 1;\nconst renamed = 2;\n');
+    const found = detect(dir);
+    assert.equal(found.length, 1);
+    assert.equal(found[0].kind, 'revision');
+    assert.equal(found[0].file, 'parser.ts');
+    assert.deepEqual(found[0].removed, ['const b = 2;']);
+    assert.deepEqual(found[0].added, ['const renamed = 2;']);
+
+    assert.deepEqual(detect(dir), [], 'the same revision must not be reported twice');
+  });
+});
+
+test("Claude's own later edit is not mistaken for a human revision", () => {
+  sandbox((dir) => {
+    const file = join(dir, 'x.ts');
+    writeFileSync(file, 'one\n');
+    track(file, dir);
+    // Claude edits again: the write is followed by a re-track, as the hook does.
+    writeFileSync(file, 'one\ntwo\n');
+    track(file, dir);
+    assert.deepEqual(detect(dir), [], 'a tracked write must never look like a correction');
+  });
+});
+
+test('secrets and oversized files are never snapshotted', () => {
+  sandbox((dir) => {
+    const env = join(dir, '.env');
+    writeFileSync(env, 'API_KEY=sk-live-real\n');
+    assert.equal(isTrackable(env), false);
+    assert.equal(track(env, dir), false);
+
+    const big = join(dir, 'big.json');
+    writeFileSync(big, 'x'.repeat(300 * 1024));
+    assert.equal(isTrackable(big), false);
+
+    const ok = join(dir, 'fine.ts');
+    writeFileSync(ok, 'ok\n');
+    assert.equal(track(ok, dir), true);
+  });
+});
+
+test('a deleted file is untracked instead of crashing detection', () => {
+  sandbox((dir) => {
+    const file = join(dir, 'gone.ts');
+    writeFileSync(file, 'bye\n');
+    track(file, dir);
+    rmSync(file);
+    assert.deepEqual(detect(dir), []);
+    assert.equal(tracked(dir), 0);
+  });
+});
+
+test('tracking stays bounded and leaves no orphan snapshots', () => {
+  sandbox((dir) => {
+    for (let i = 0; i < 60; i++) {
+      const f = join(dir, `f${i}.ts`);
+      writeFileSync(f, `line ${i}\n`);
+      track(f, dir);
+    }
+    assert.equal(tracked(dir), 50, 'oldest entries must be evicted');
+    assert.equal(orphans(dir), 0, 'evicted entries must not leave snapshot files behind');
+  });
 });
 
 console.log(`${passed} passed${process.exitCode ? ', with failures' : ''}`);
