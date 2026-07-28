@@ -1,0 +1,5 @@
+node_modules/
+.DS_Store
+
+# Raw signal log — local evidence only, never shared.
+.claude/taste-signals.*

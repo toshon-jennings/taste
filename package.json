@@ -1,0 +1,13 @@
+{
+  "name": "claude-taste",
+  "version": "0.1.0",
+  "description": "Learned coding preferences for Claude Code — captured from real signals, stored as markdown, shared over git.",
+  "type": "module",
+  "bin": { "taste": "./bin/taste.mjs" },
+  "engines": { "node": ">=18" },
+  "files": ["bin", "src", "hooks", "skills", ".claude-plugin"],
+  "scripts": {
+    "test": "node test/run.mjs"
+  },
+  "license": "MIT"
+}

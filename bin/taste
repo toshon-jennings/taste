@@ -1,0 +1,5 @@
+#!/bin/sh
+# Bare `taste` command. Claude Code puts a plugin's bin/ on PATH, and an
+# extensionless file cannot be loaded as ESM directly, so shim to the .mjs.
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec node "$here/taste.mjs" "$@"
