@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "taste",
+  "description": "Learned coding preferences for Claude Code.",
+  "owner": {
+    "name": "Toshon Jennings",
+    "email": "toshonjennings@gmail.com",
+    "url": "https://github.com/toshon-jennings"
+  },
+  "plugins": [
+    {
+      "name": "taste",
+      "source": "./",
+      "description": "Learns your coding preferences from real signals, stores them as reviewable markdown, and shares them over git.",
+      "homepage": "https://github.com/toshon-jennings/taste",
+      "repository": "https://github.com/toshon-jennings/taste",
+      "category": "productivity",
+      "tags": ["preferences", "memory", "conventions", "learning"]
+    }
+  ]
+}

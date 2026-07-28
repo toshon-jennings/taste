@@ -143,23 +143,49 @@ smaller, and it runs.
 
 ## Install
 
-As a Claude Code plugin (gets you the hooks, both skills, and `taste` on `PATH`):
+As a Claude Code plugin — this repo is its own marketplace, so it is two steps.
+`plugin install` takes a plugin name, never a path:
 
 ```bash
-claude plugin install /Users/toshonjennings/taste
+claude plugin marketplace add toshon-jennings/taste
+claude plugin install taste@taste
 ```
 
-Or use the CLI directly:
+That gets you both skills, the five hooks, and `taste` on your `PATH` inside
+Claude Code, for about 126 tokens of always-on context.
+
+From a local clone, point the marketplace at the directory instead:
+
+```bash
+claude plugin marketplace add ./taste
+claude plugin install taste@taste
+```
+
+Then, in any project:
+
+```bash
+taste init
+```
+
+Or skip the plugin and use the CLI alone — you lose the hooks, so nothing is
+captured automatically, but `add`, `show`, `push`, and `pull` all work:
 
 ```bash
 npm link && taste status
 ```
 
-Then, in a project:
+### Working on this repo
+
+Installing copies the plugin into `~/.claude/plugins/cache/` pinned to the
+`version` in `plugin.json`, so edits to your working copy do nothing until you
+bump it and refresh:
 
 ```bash
-taste init
+claude plugin marketplace update taste && claude plugin update taste@taste
 ```
+
+Drop `version` from `plugin.json` if you would rather track the commit SHA and
+get a new version on every commit.
 
 ## Commands
 

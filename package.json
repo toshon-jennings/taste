@@ -1,6 +1,6 @@
 {
   "name": "claude-taste",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Learned coding preferences for Claude Code — captured from real signals, stored as markdown, shared over git.",
   "type": "module",
   "bin": {

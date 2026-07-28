@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "taste",
   "displayName": "Taste",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Learns your coding preferences from real signals, stores them as reviewable markdown, and shares them over git.",
   "license": "MIT",
   "author": {
