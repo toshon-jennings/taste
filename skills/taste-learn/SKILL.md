@@ -6,8 +6,8 @@ description: Distill the raw taste signal log into reviewable preference rules. 
 # Distill signals into taste
 
 The capture hooks record what happened. This step turns that record into rules —
-and it is deliberately a step you take, not something that happens invisibly,
-because a preference file you did not agree to is worse than no preference file.
+and it is deliberately something the user asks for, not something that happens
+invisibly, because a preference file they never agreed to is worse than none.
 
 ## 1. Read the evidence
 

@@ -4,3 +4,7 @@ node_modules/
 # Raw local evidence — prompts and snapshots of your files. Never shared.
 .claude/taste-signals.*
 .claude/taste-watch/
+
+# Personal working docs — local to the maintainer, not part of the package
+HANDOFF.md
+SUMMARY.md

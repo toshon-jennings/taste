@@ -98,8 +98,8 @@ D̃(t) = Σⱼ λ^((t − tⱼ)/H)   over contradictions
 ```
 
 Observations are weighted by where they came from: something you **said** counts
-×3, a **revision** or a **denial** ×2, an inferred edit ×1. Someone telling you a
-rule is stronger evidence than you guessing one from a diff.
+×3, a **revision** or a **denial** ×2, an inferred edit ×1. A rule you stated
+outright is stronger evidence than one guessed from a diff.
 
 The prior starts an unseen rule at 0.33, so one sighting is not evidence.
 Confirmations and contradictions are stored as the decayed running totals rather

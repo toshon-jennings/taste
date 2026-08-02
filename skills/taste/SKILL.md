@@ -56,7 +56,7 @@ Package names are free-form and should describe a domain, not a project:
 ```bash
 taste push cli -g                 # project → your global store
 taste pull cli -g                 # global → this project
-taste remote git@github.com:you/taste.git
+taste remote git@github.com:<user>/taste.git
 taste push --all                  # → the git remote
 taste pull --all
 ```

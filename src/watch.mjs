@@ -113,7 +113,7 @@ export function detect(root = projectRoot()) {
         path: file,
         ext: extname(file) || 'none',
         ...d,
-        summary: `${basename(file)}:${d.line} you revised what Claude wrote (${d.lines})`,
+        summary: `${basename(file)}:${d.line} the user revised what Claude wrote (${d.lines})`,
       });
     }
     writeFileSync(snapPath, current);

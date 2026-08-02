@@ -35,10 +35,10 @@ function parseArgs(argv) {
 const VALUE_FLAGS = new Set(['note', 'source', 'weight', 'max', 'min', 'tail']);
 
 /**
- * How much one observation counts, by where it came from. Someone telling you a
- * rule outright is stronger evidence than you inferring one from a single edit;
- * someone silently rewriting your code sits in between — it is unambiguous, but
- * you have to guess what it meant.
+ * How much one observation counts, by where it came from. A rule you stated
+ * outright is stronger evidence than one inferred from a single edit; you
+ * silently rewriting what Claude wrote sits in between — it is unambiguous, but
+ * the reason has to be guessed.
  */
 const SOURCE_WEIGHT = { stated: 3, revision: 2, denied: 2 };
 
